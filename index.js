@@ -58,9 +58,13 @@ exports.init = function (ssb, config) {
         ssb.friends.hopStream(),
         pull.filter(d => !d.sync),
         pull.drain(d => {
-          Object.keys(d)
+          const feeds = Object.keys(d)
             .filter(feedId => d[feedId] >= 0 && d[feedId] <= 2) // friends of friends
+
+          feeds
             .forEach(feedId => state.updateQueue.add(feedId))
+
+          feeds
             .filter(feedId => d[feedId] === 1) // friends of friends
             .forEach(feedId => state.following.add(feedId))
         })
