@@ -1,6 +1,6 @@
 {
   "name": "ssb-suggest",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "an ssb-server plugin for suggestions (e.g. profile, memes, ...)",
   "main": "index.js",
   "scripts": {
