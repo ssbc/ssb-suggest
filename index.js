@@ -18,16 +18,16 @@ exports.init = function (ssb, config) {
     suggestCache: {},
     updateQueue: new Set(),
     following: new Set(),
-    recentFriends: []
+    recentAuthors: []
   }
 
-  var avatar = ssb.patchwork ? ssb.patchwork.profile.avatar : profileAvatar(ssb)
+  var avatar = ssb.patchwork ? ssb.patchwork.profile.avatar : profileAvatar(ssb, state)
 
   // start update loop after 5 seconds
   setTimeout(updateLoop, 5e3)
   setTimeout(() => watchNewAbouts(ssb, state), 5e3)
   setTimeout(() => watchRecentAuthors(ssb, state), 10e3)
-  setTimeout(() => loadFriends(ssb, state), 5)
+  setTimeout(() => loadFollows(ssb, state), 5)
 
   function updateLoop () {
     if (state.updateQueue.size) {
@@ -68,21 +68,25 @@ exports.init = function (ssb, config) {
 
         if (typeof text === 'string' && text.trim().length) {
           let matches = getMatches(state.suggestCache, text)
-          let result = sort(matches, defaultIds, state.recentFriends, state.following)
+          let result = sort(matches, defaultIds, state.recentAuthors, state.following)
           if (limit) {
             result = result.slice(0, limit)
           }
 
-          // add following attribute
-          result = result.map(x => merge(x, { following: state.following.has(x.id) }))
+          result = result
+            .map(match => merge(
+              match.avatar,
+              { matchedName: match.name },
+              { following: state.following.has(match.avatar.id) } // add following attribute
+            ))
 
           cb(null, result)
         } else if (defaultIds && defaultIds.length) {
           cb(null, defaultIds.map(id => state.suggestCache[id]))
         } else {
-          let ids = state.recentFriends.slice(-(limit || 20)).reverse() || []
-          let result = ids.map(id => state.suggestCache[id])
-          result = result.map(x => merge(x, { following: state.following.has(x.id) }))
+          let result = state.recentAuthors.slice(-(limit || 20)).reverse()
+            .map(feedId => state.suggestCache[feedId])
+            .map(x => merge(x, { following: state.following.has(x.id) }))
           cb(null, result)
         }
       })
@@ -113,7 +117,7 @@ function watchNewAbouts (ssb, state) {
 }
 
 function watchRecentAuthors (ssb, state) {
-  const howFarBack = 1000
+  const howFarBack = 300
 
   pull(
     pullCat([
@@ -126,19 +130,15 @@ function watchRecentAuthors (ssb, state) {
         state.updateQueue.add(author)
       }
 
-      // update recent friends
-      if (state.following.has(author)) {
-        var index = state.recentFriends.indexOf(author)
-        if (~index) {
-          state.recentFriends.splice(index, 1)
-        }
-        state.recentFriends.push(author)
-      }
+      // update recent authors
+      var index = state.recentAuthors.indexOf(author)
+      if (~index) state.recentAuthors.splice(index, 1) // pop from current position
+      state.recentAuthors.push(author) // add to end
     })
   )
 }
 
-function loadFriends (ssb, state) {
+function loadFollows (ssb, state) {
   if (ssb.patchwork && ssb.patchwork.contacts) {
     // use the public friend states for suggestions (not private)
     // so that we can find friends that we can still find ignored friends (privately blocked)
@@ -159,30 +159,34 @@ function loadFriends (ssb, state) {
     // ssb.patchwork.contacts.stateStream({ reverse: true, feedId: ssb.id }),
   } else if (ssb.friends) {
     pull(
-      ssb.friends.hopStream(),
+      ssb.friends.hopStream({ live: true, old: true }),
       pull.filter(d => !d.sync),
       pull.drain(d => {
-        const feeds = Object.keys(d)
-          .filter(feedId => d[feedId] >= 0 && d[feedId] <= 2) // friends of friends
-
-        feeds
-          .forEach(feedId => state.updateQueue.add(feedId))
-
-        feeds
-          .filter(feedId => d[feedId] === 1) // friends of friends
-          .forEach(feedId => state.following.add(feedId))
-      })
+        Object.keys(d)
+          .filter(feedId => d[feedId] >= 0 && d[feedId] <= 1) // friends of friends
+          .forEach(feedId => {
+            state.following.add(feedId)
+            state.updateQueue.add(feedId)
+          })
+      }, () => console.log('!!! hopStream ended !!!'))
     )
   }
 }
 
-function sort (items, defaultItems, recentFriends, following) {
-  return items.sort((a, b) => {
-    return compareBool(defaultItems.includes(a.id), defaultItems.includes(b.id)) ||
-           compareBool(recentFriends.includes(a.id), recentFriends.includes(b.id)) ||
-           compareBool(following.has(a.id), following.has(b.id)) ||
-           a.name.length - b.name.length
-  })
+function sort (matches, defaultItems, recentAuthors, following) {
+  return matches
+    .sort((a, b) => {
+      return compareBool(defaultItems.includes(a.avatar.id), defaultItems.includes(b.avatar.id)) ||
+             compareBool(recentAuthors.includes(a.avatar.id), recentAuthors.includes(b.avatar.id)) ||
+             compareBool(following.has(a.avatar.id), following.has(b.avatar.id)) ||
+             a.match.length - b.match.length
+    })
+    .reduce((soFar, match) => {
+      if (soFar.every(m => m.avatar.id !== match.avatar.id)) {
+        soFar.push(match)
+      }
+      return soFar
+    }, [])
 }
 
 function compareBool (a, b) {
@@ -199,21 +203,21 @@ function getMatches (cache, text) {
   var matches = []
   var values = Object.values(cache)
 
-  values.forEach((item) => {
-    if (typeof item.name === 'string' && startsWith(item.name, text)) {
-      item.nameMatched = item.name
-      matches[item.key] = item
+  values.forEach((avatar) => {
+    if (typeof avatar.name === 'string' && startsWith(avatar.name, text)) {
+      const aliases = new Set(avatar.names)
+      aliases.delete(avatar.name)
+      matches.push({ match: avatar.name, avatar })
     }
   })
-  values.forEach((item) => {
-    if (!Array.isArray(item.names)) return
+  values.forEach((avatar) => {
+    if (!Array.isArray(avatar.names)) return
 
-    // change item.names to item.aliases (and drop item.name from that list)
-    const alias = item.names.find(name => startsWith(name, text))
-    if (alias) {
-      item.nameMatched = alias
-      matches.push(item)
-    }
+    avatar.names
+      .filter(name => name !== avatar.name && startsWith(name, text))
+      .forEach(alias => {
+        matches.push({ match: alias, avatar })
+      })
   })
   return Object.values(matches)
 }
