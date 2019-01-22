@@ -5,8 +5,7 @@ var pullCat = require('pull-cat')
 var merge = require('lodash.merge')
 
 var profileAvatar = require('./lib/avatar')
-
-var collator = new Intl.Collator('default', { sensitivity: 'base', usage: 'search' })
+var startsWith = require('./lib/starts-with')
 
 exports.name = 'suggest'
 exports.version = require('./package.json').version
@@ -28,49 +27,7 @@ exports.init = function (ssb, config) {
   setTimeout(updateLoop, 5e3)
   setTimeout(() => watchNewAbouts(ssb, state), 5e3)
   setTimeout(() => watchRecentAuthors(ssb, state), 10e3)
-
-  // TODO - re-enable this
-  if (ssb.patchwork) {
-    setTimeout(() => {
-      // use the public friend states for suggestions (not private)
-      // so that we can find friends that we can still find ignored friends (privately blocked)
-      pull(
-        ssb.patchwork.contacts.stateStream({ live: true, feedId: ssb.id }),
-        pull.drain(states => {
-          Object.keys(states).forEach(key => {
-            if (states[key] === true) {
-              state.following.add(key)
-              state.updateQueue.add(key)
-            } else {
-              state.following.delete(key)
-            }
-          })
-        })
-      )
-
-      // TODO - add existing friends, e.g. run this source:
-      // ssb.patchwork.contacts.stateStream({ reverse: true, feedId: ssb.id }),
-    }, 5)
-  }
-  if (ssb.friends) {
-    setTimeout(() => {
-      pull(
-        ssb.friends.hopStream(),
-        pull.filter(d => !d.sync),
-        pull.drain(d => {
-          const feeds = Object.keys(d)
-            .filter(feedId => d[feedId] >= 0 && d[feedId] <= 2) // friends of friends
-
-          feeds
-            .forEach(feedId => state.updateQueue.add(feedId))
-
-          feeds
-            .filter(feedId => d[feedId] === 1) // friends of friends
-            .forEach(feedId => state.following.add(feedId))
-        })
-      )
-    }, 5)
-  }
+  setTimeout(() => loadFriends(ssb, state), 5)
 
   function updateLoop () {
     if (state.updateQueue.size) {
@@ -123,7 +80,7 @@ exports.init = function (ssb, config) {
         } else if (defaultIds && defaultIds.length) {
           cb(null, defaultIds.map(id => state.suggestCache[id]))
         } else {
-          let ids = state.recentFriends.slice(-(limit || 20)).reverse()
+          let ids = state.recentFriends.slice(-(limit || 20)).reverse() || []
           let result = ids.map(id => state.suggestCache[id])
           result = result.map(x => merge(x, { following: state.following.has(x.id) }))
           cb(null, result)
@@ -181,6 +138,44 @@ function watchRecentAuthors (ssb, state) {
   )
 }
 
+function loadFriends (ssb, state) {
+  if (ssb.patchwork && ssb.patchwork.contacts) {
+    // use the public friend states for suggestions (not private)
+    // so that we can find friends that we can still find ignored friends (privately blocked)
+    pull(
+      ssb.patchwork.contacts.stateStream({ live: true, feedId: ssb.id }),
+      pull.drain(states => {
+        Object.keys(states).forEach(key => {
+          if (states[key] === true) {
+            state.following.add(key)
+            state.updateQueue.add(key)
+          } else {
+            state.following.delete(key)
+          }
+        })
+      })
+    )
+    // TODO - add existing friends, e.g. run this source:
+    // ssb.patchwork.contacts.stateStream({ reverse: true, feedId: ssb.id }),
+  } else if (ssb.friends) {
+    pull(
+      ssb.friends.hopStream(),
+      pull.filter(d => !d.sync),
+      pull.drain(d => {
+        const feeds = Object.keys(d)
+          .filter(feedId => d[feedId] >= 0 && d[feedId] <= 2) // friends of friends
+
+        feeds
+          .forEach(feedId => state.updateQueue.add(feedId))
+
+        feeds
+          .filter(feedId => d[feedId] === 1) // friends of friends
+          .forEach(feedId => state.following.add(feedId))
+      })
+    )
+  }
+}
+
 function sort (items, defaultItems, recentFriends, following) {
   return items.sort((a, b) => {
     return compareBool(defaultItems.includes(a.id), defaultItems.includes(b.id)) ||
@@ -201,17 +196,24 @@ function compareBool (a, b) {
 }
 
 function getMatches (cache, text) {
-  var result = []
+  var matches = []
   var values = Object.values(cache)
 
   values.forEach((item) => {
     if (typeof item.name === 'string' && startsWith(item.name, text)) {
-      result.push(item)
+      item.nameMatched = item.name
+      matches[item.key] = item
     }
   })
-  return result
-}
+  values.forEach((item) => {
+    if (!Array.isArray(item.names)) return
 
-function startsWith (text, startsWith) {
-  return collator.compare(text.slice(0, startsWith.length), startsWith) === 0
+    // change item.names to item.aliases (and drop item.name from that list)
+    const alias = item.names.find(name => startsWith(name, text))
+    if (alias) {
+      item.nameMatched = alias
+      matches.push(item)
+    }
+  })
+  return Object.values(matches)
 }
