@@ -86,6 +86,7 @@ exports.init = function (ssb, config) {
 
           result = result
             .map(feedId => state.suggestCache[feedId])
+            .filter(Boolean)
             .map(x => merge(x, { following: state.following.has(x.id) }))
           cb(null, result)
         }
