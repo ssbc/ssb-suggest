@@ -61,6 +61,9 @@ exports.init = function (ssb, config) {
 
   return {
     profile: function suggestProfile ({ text, limit, defaultIds = [] }, cb) {
+      defaultIds = Array.from(new Set(defaultIds)) // uniq!
+        .filter(feedId => feedId !== ssb.id) // not me
+
       update(defaultIds.filter(id => !state.suggestCache[id]), function (err) {
         if (err) return cb(err)
 
@@ -80,7 +83,12 @@ exports.init = function (ssb, config) {
 
           cb(null, result)
         } else if (defaultIds && defaultIds.length) {
-          cb(null, defaultIds.map(id => state.suggestCache[id]))
+          let result = defaultIds
+            .map(id => state.suggestCache[id])
+            .filter(Boolean)
+            .map(x => merge(x, { following: state.following.has(x.id) }))
+
+          cb(null, result)
         } else {
           let result = state.recentAuthors.slice(-(limit || 20)).reverse()
 
@@ -88,6 +96,7 @@ exports.init = function (ssb, config) {
             .map(feedId => state.suggestCache[feedId])
             .filter(Boolean)
             .map(x => merge(x, { following: state.following.has(x.id) }))
+
           cb(null, result)
         }
       })
