@@ -17,8 +17,14 @@ exports.init = function (ssb, config) {
     suggestCache: {},
     updateQueue: new Set(),
     following: new Set(),
-    recentAuthors: []
+    recentAuthors: [],
+    quiting: false
   }
+
+  ssb.close.hook(function (fn, args) {
+    state.quiting = true
+    return fn.apply(this, args)
+  })
   var avatar = ssb.patchwork ? ssb.patchwork.profile.avatar : profileAvatar(ssb, state)
 
   // start update loop after 5 seconds
