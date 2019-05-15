@@ -2,15 +2,15 @@
 
 ### Background
 
-When writing messages in Scuttlebutt, sometimes you may want to mention another user, but how does that work? In most ssb-clients which use markdown, one would need to have a hyperlink that wraps their ssb key in a link like so:
+When a user is writing a post in Scuttlebutt, sometimes they may want to mention another user. In most ssb-clients which use markdown, @-mentions work via a hyperlink that wraps a user's ssb key in a markdown link like so:
 
 ```
 Hey [@corlock](@sHFNLAao6phQ5AN17ecYNUbszDa4Qf6DhyQsjtQfdmY=.ed25519)! How are you?
 ```
 
-However, chances are you only know the person's alias (what you call them, or what they call themselves), and not their feedId.
+Most likely, a user only know another person's alias (what you call them, or what they call themselves), and does not know their feedId.
 
-This plugin provides a way to suggest SSB users (with avatar, alias, feedId, etc) based on a query text for an alias. The primary use of this plugin is for auto-suggest in scuttlebutt clients, so when a user starts typing "@cor" in a message, they will be prompted with a visual list of suggestions that can be auto-completed to a functioning @-mention in ssb markdown.
+Originally abstracted from Patchwork, this plugin provides a way to return a list of SSB users (with avatar, alias, feedId, etc) based on a query text for an user's alias. The primary use of this plugin is for auto-suggest in scuttlebutt clients, so when a user starts typing "@cor" in a message, they will be prompted with a visual list of suggestions that can be auto-completed to a functioning @-mention in ssb markdown.
 
 
 ### Usage
