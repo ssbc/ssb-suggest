@@ -1,6 +1,6 @@
 # ssb-suggest
 
-### Background
+## Background
 
 When a user is writing a post in Scuttlebutt, sometimes they may want to mention another user. In most ssb-clients which use markdown, @-mentions work via a hyperlink that wraps a user's ssb key in a markdown link like so:
 
@@ -13,7 +13,7 @@ Most likely, a user only know another person's alias (what you call them, or wha
 Originally abstracted from Patchwork, this plugin provides a way to return a list of SSB users (with avatar, alias, feedId, etc) based on a query text for an user's alias. The primary use of this plugin is for auto-suggest in scuttlebutt clients, so when a user starts typing "@cor" in a message, they will be prompted with a visual list of suggestions that can be auto-completed to a functioning @-mention in ssb markdown.
 
 
-### Usage
+## Usage
 `ssb-suggest` is a plugin for `ssb-server`. For documentation on how plugins work in Scuttlebutt, see [here](https://github.com/ssbc/secret-stack/blob/master/PLUGINS.md).
 
 
@@ -24,7 +24,7 @@ Requires other plugins :
 
 This module was extracted from patchwork, originally written by Matt Mckegg
 
-## Example usage
+### Example usage
 
 ```js
 var Server = require('ssb-server')
