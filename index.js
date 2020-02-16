@@ -4,6 +4,7 @@ var merge = require('lodash.merge')
 
 var profileAvatar = require('./lib/avatar')
 var startsWith = require('./lib/starts-with')
+var reduceMatches = require('./lib/reduce-matches')
 var watch = require('./lib/watch')
 
 exports.name = 'suggest'
@@ -75,7 +76,7 @@ exports.init = function (ssb, config) {
 
         if (typeof text === 'string' && text.trim().length) {
           let matches = getMatches(state.suggestCache, text)
-          let result = sort(text, matches, defaultIds, state.recentAuthors, state.following)
+          let result = reduceMatches(text, matches, defaultIds, state.recentAuthors, state.following)
           if (limit) {
             result = result.slice(0, limit)
           }
@@ -110,60 +111,14 @@ exports.init = function (ssb, config) {
   }
 }
 
-function sort (text, matches, defaultItems, recentAuthors, following) {
-  return matches
-    .sort((a, b) => {
-      return compareBool(defaultItems.includes(a.avatar.id), defaultItems.includes(b.avatar.id)) ||
-             compareBool(recentAuthors.includes(a.avatar.id), recentAuthors.includes(b.avatar.id)) ||
-             compareBool(following.has(a.avatar.id), following.has(b.avatar.id)) ||
-             a.name.length - b.name.length
-    })
-
-    // for each person, bubble up the option where the match.name is the best match to search
-    .sort((a, b) => {
-      if (a.avatar.id !== b.avatar.id) return 0
-      return compareBool(~a.name.indexOf(text), ~b.name.indexOf(text))
-    })
-
-    // drop any duplicates of particular identities
-    .reduce((soFar, match) => {
-      if (soFar.every(m => m.avatar.id !== match.avatar.id)) {
-        soFar.push(match)
-      }
-      return soFar
-    }, [])
-
-    // push tombstones accounts to the bottom
-    // TODO replace once we have tombstones
-    .sort((a, b) => compareBool(!isDead(a), !isDead(b)))
-}
-
-function isDead (match) {
-  return match.avatar.name.startsWith('deprecated') ||
-    match.avatar.name.startsWith('dead') ||
-    match.avatar.names.find(name => name.startsWith('deprecated')) ||
-    match.avatar.names.find(name => name.startsWith('dead'))
-}
-
-function compareBool (a, b) {
-  if (a === b) return 0
-  if (a) return -1
-  return 1
-}
-
 function getMatches (cache, text) {
   var matches = []
   var values = Object.values(cache)
 
   values.forEach((avatar) => {
-    if (typeof avatar.name === 'string' && startsWith(avatar.name, text)) {
-      const aliases = new Set(avatar.names)
-      aliases.delete(avatar.name)
+    if (startsWith(avatar.name, text)) {
       matches.push({ name: avatar.name, avatar })
     }
-  })
-  values.forEach((avatar) => {
-    if (!Array.isArray(avatar.names)) return
 
     avatar.names
       .filter(name => name !== avatar.name && startsWith(name, text))
