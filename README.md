@@ -18,7 +18,7 @@ Originally abstracted from Patchwork, this plugin provides a way to return a lis
 
 
 Requires other plugins :
-- `ssb-backlinks`,
+- `ssb-backlinks` if not using `ssb-db2`
 - `ssb-about`
 - EITHER `ssb-friends` OR patchwork!
 
